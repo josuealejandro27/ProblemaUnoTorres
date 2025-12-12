@@ -1,0 +1,131 @@
+<div class="home-container">
+  <div class="home-card">
+    <!-- Header -->
+    <div class="card-header">
+      <div class="icon-wrapper">
+        <span class="home-icon">📄</span>
+      </div>
+      <h2>Sistema de Revisión de Documentos</h2>
+      <p class="subtitle">Gestiona y revisa documentos PDF de manera eficiente</p>
+    </div>
+
+    <!-- Contenido principal -->
+    <div class="home-content">
+      <div class="options-grid">
+        <!-- Opción 1: Subir Documento -->
+        <div class="option-card upload-option" (click)="navigateToUpload()">
+          <div class="option-icon-wrapper">
+            <div class="option-icon">📤</div>
+          </div>
+          <div class="option-content">
+            <h3>Subir Documento</h3>
+            <p class="option-description">
+              Envía documentos PDF para revisión. 
+              <strong>Siempre disponible</strong> para todos los usuarios.
+            </p>
+            <div class="option-features">
+              <div class="feature">
+                <span class="feature-icon">✅</span>
+                <span>Siempre accesible</span>
+              </div>
+              <div class="feature">
+                <span class="feature-icon">📧</span>
+                <span>Notificaciones por correo</span>
+              </div>
+              <div class="feature">
+                <span class="feature-icon">🔒</span>
+                <span>Almacenamiento seguro</span>
+              </div>
+            </div>
+          </div>
+          <div class="option-footer">
+            <button class="btn-option btn-primary">
+              <span class="btn-icon">📤</span>
+              Subir Documento
+            </button>
+            <div class="status-badge available">
+              <span class="status-dot"></span>
+              Disponible
+            </div>
+          </div>
+        </div>
+
+        <!-- Opción 2: Revisar Documentos -->
+        <div class="option-card review-option" (click)="navigateToReview()">
+          <div class="option-icon-wrapper">
+            <div class="option-icon">🔍</div>
+          </div>
+          <div class="option-content">
+            <h3>Revisar Documentos</h3>
+            <p class="option-description">
+              Revisa, acepta o rechaza documentos pendientes.
+              <strong>Acceso exclusivo</strong> (una persona a la vez).
+            </p>
+            <div class="option-features">
+              <div class="feature">
+                <span class="feature-icon">👤</span>
+                <span>Acceso por turnos</span>
+              </div>
+              <div class="feature">
+                <span class="feature-icon">⏱️</span>
+                <span>Sesión de 30 minutos</span>
+              </div>
+              <div class="feature">
+                <span class="feature-icon">📋</span>
+                <span>Panel completo</span>
+              </div>
+            </div>
+          </div>
+          <div class="option-footer">
+            <button class="btn-option btn-secondary">
+              <span class="btn-icon">🔍</span>
+              Ver Disponibilidad
+            </button>
+            <div class="status-badge exclusive">
+              <span class="status-dot"></span>
+              Acceso Exclusivo
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Información adicional -->
+      <div class="info-section">
+        <h3 class="section-title">
+          <span class="title-icon">📋</span>
+          ¿Cómo funciona el sistema?
+        </h3>
+        <div class="info-cards">
+          <div class="info-card">
+            <div class="info-number">1</div>
+            <div class="info-content">
+              <h4>Subir Documentos</h4>
+              <p>Los usuarios suben documentos PDF con su información de contacto.</p>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-number">2</div>
+            <div class="info-content">
+              <h4>Revisar Documentos</h4>
+              <p>Los revisores acceden por turnos para evaluar los documentos.</p>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-number">3</div>
+            <div class="info-content">
+              <h4>Tomar Decisiones</h4>
+              <p>Cada documento puede ser aceptado o rechazado con retroalimentación.</p>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-number">4</div>
+            <div class="info-content">
+              <h4>Notificar Resultados</h4>
+              <p>Los usuarios reciben notificaciones por correo con los resultados.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

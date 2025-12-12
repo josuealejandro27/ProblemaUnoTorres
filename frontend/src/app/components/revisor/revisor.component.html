@@ -1,0 +1,504 @@
+<!-- revisor.component.html -->
+<div class="revisor-container">
+  <div class="revisor-card">
+    <!-- Header -->
+    <div class="card-header">
+      <div class="header-content">
+        <div class="icon-wrapper">
+          <span class="revisor-icon">👥</span>
+        </div>
+        <div class="header-text">
+          <h2>Panel de Revisión de Documentos</h2>
+          <p class="subtitle">Sistema de Pool Colaborativo</p>
+        </div>
+      </div>
+      
+      <!-- Selector de revisor flotante -->
+      <div class="floating-selector">
+        <div class="form-group compact">
+          <label for="revisorSelect" class="form-label">
+            <span class="label-icon">👤</span>
+            Tu Identidad
+          </label>
+          <select 
+            id="revisorSelect"
+            [(ngModel)]="revisorName"
+            class="form-input select compact"
+            [disabled]="poolAbierto && poolOwner === revisorName"
+          >
+            <option value="" disabled selected>¿Quién eres?</option>
+            <option value="RevisorA">Revisor A</option>
+            <option value="RevisorB">Revisor B</option>
+            <option value="RevisorC">Revisor C</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel de Control del Pool -->
+    <div class="pool-control-section" [ngClass]="{'pool-abierto': poolAbierto, 'pool-cerrado': !poolAbierto}">
+      <div class="pool-status">
+        <div class="pool-indicator">
+          <span class="indicator-dot" [ngClass]="{'active': poolAbierto}"></span>
+          <span class="indicator-text">
+            {{ poolAbierto ? 'POOL ACTIVO' : 'POOL DISPONIBLE' }}
+          </span>
+        </div>
+        
+        <div class="pool-info" *ngIf="poolAbierto">
+          <div class="pool-owner">
+            <span class="owner-icon">👑</span>
+            <span class="owner-text">
+              <strong>{{ poolOwner }}</strong> está usando el pool
+              <span *ngIf="poolOwner === revisorName" class="yo-badge-pool">(TÚ)</span>
+            </span>
+          </div>
+          <div class="pool-stats">
+            <span class="stat">
+              <span class="stat-icon">⏱️</span>
+              {{ getTiempoTranscurrido() }}
+            </span>
+            <span class="stat">
+              <span class="stat-icon">📄</span>
+              {{ documentosRevisados }} revisados
+            </span>
+          </div>
+          
+      <!-- Mensaje de advertencia si otro tiene el pool -->
+      <div class="pool-warning" *ngIf="poolAbierto && poolOwner !== revisorName">
+        <span class="warning-icon">⏳</span>
+        <span class="warning-text">
+          Espera a que {{ poolOwner }} libere el pool para poder abrirlo
+        </span>
+      </div>
+    </div>
+    
+    <div class="pool-info" *ngIf="!poolAbierto">
+      <p class="pool-message">
+        <span class="message-icon">💡</span>
+        El pool está disponible. Sé el primero en abrirlo para revisar documentos
+      </p>
+    </div>
+  </div>
+  
+  <div class="pool-actions">
+    <!-- Botón Abrir Pool - solo si no hay pool activo -->
+    <button 
+      *ngIf="!poolAbierto"
+      (click)="abrirPool()"
+      class="btn-pool btn-abrir"
+      [disabled]="!revisorName || isLoading"
+    >
+      <span class="btn-icon">🔓</span>
+      Abrir Pool (Solo 1 a la vez)
+    </button>
+    
+    <!-- Botón Cerrar Pool - solo si es dueño -->
+    <button 
+      *ngIf="poolAbierto && poolOwner === revisorName"
+      (click)="cerrarPool()"
+      class="btn-pool btn-cerrar"
+      [disabled]="isLoading"
+    >
+      <span class="btn-icon">🔒</span>
+      Cerrar y Liberar Pool
+    </button>
+    
+    <!-- Mensaje si otro tiene el pool -->
+    <div *ngIf="poolAbierto && poolOwner !== revisorName" class="pool-ocupado-message">
+      <span class="ocupado-icon">🔴</span>
+      Pool ocupado por {{ poolOwner }}
+    </div>
+    
+    <!-- Botones adicionales -->
+    <button 
+      (click)="cargar()"
+      class="btn-pool btn-refresh"
+      [disabled]="isLoading"
+    >
+      <span class="btn-icon" *ngIf="!isLoading">🔄</span>
+      <span class="spinner-small" *ngIf="isLoading"></span>
+      {{ isLoading ? 'Cargando...' : 'Actualizar' }}
+    </button>
+    
+    <button 
+      (click)="toggleActividades()"
+      class="btn-pool btn-actividades"
+      [class.active]="showActividades"
+    >
+      <span class="btn-icon">📋</span>
+      Actividades
+      <span class="badge-count" *ngIf="actividades.length > 0">
+        {{ actividades.length }}
+      </span>
+    </button>
+  </div>
+</div>
+
+    <!-- Panel de Actividades en Tiempo Real -->
+    <div class="actividades-panel" *ngIf="showActividades">
+      <div class="actividades-header">
+        <h3>
+          <span class="title-icon">⚡</span>
+          Actividad en Tiempo Real
+        </h3>
+        <button class="btn-clear" (click)="clearActividades()" *ngIf="actividades.length > 0">
+          <span class="btn-icon">🗑️</span>
+          Limpiar
+        </button>
+      </div>
+      
+      <div class="actividades-list" *ngIf="actividades.length > 0">
+        <div 
+          *ngFor="let act of actividades" 
+          class="actividad-item"
+          [ngClass]="{'propia': act.tipo === 'propia', 'otro': act.tipo === 'otro', 'sistema': act.tipo === 'sistema'}"
+        >
+          <span class="actividad-icon">{{ act.icono }}</span>
+          <span class="actividad-text">{{ act.texto }}</span>
+          <span class="actividad-time">
+            {{ act.fecha | date:'HH:mm:ss' }}
+          </span>
+        </div>
+      </div>
+      
+      <div class="empty-actividades" *ngIf="actividades.length === 0">
+        <span class="empty-icon">📭</span>
+        <p>No hay actividad reciente</p>
+        <p class="empty-subtext">Las acciones aparecerán aquí automáticamente</p>
+      </div>
+    </div>
+
+    <!-- Filtros Rápidos -->
+    <div class="filters-section">
+      <div class="filters-grid">
+        <button 
+          class="filter-btn"
+          [class.active]="currentFilter === null"
+          (click)="cambiarFiltro(null)"
+        >
+          <span class="filter-icon">📋</span>
+          Todos
+          <span class="filter-count">{{ documentos.length }}</span>
+        </button>
+        
+        <button 
+          class="filter-btn disponible"
+          [class.active]="currentFilter === 'DISPONIBLES'"
+          (click)="cambiarFiltro('DISPONIBLES')"
+        >
+          <span class="filter-icon">📄</span>
+          Disponibles
+          <span class="filter-count">{{ contarDisponibles() }}</span>
+        </button>
+        
+        <button 
+          class="filter-btn en-revision"
+          [class.active]="currentFilter === 'ASIGNADOS'"
+          (click)="cambiarFiltro('ASIGNADOS')"
+        >
+          <span class="filter-icon">🔍</span>
+          En Revisión
+          <span class="filter-count">{{ contarAsignados() }}</span>
+        </button>
+        
+        <button 
+          class="filter-btn aceptado"
+          [class.active]="currentFilter === 'ACEPTADO'"
+          (click)="cambiarFiltro('ACEPTADO')"
+        >
+          <span class="filter-icon">✅</span>
+          Aceptados
+          <span class="filter-count">{{ contarPorEstado('ACEPTADO') }}</span>
+        </button>
+        
+        <button 
+          class="filter-btn rechazado"
+          [class.active]="currentFilter === 'RECHAZADO'"
+          (click)="cambiarFiltro('RECHAZADO')"
+        >
+          <span class="filter-icon">❌</span>
+          Rechazados
+          <span class="filter-count">{{ contarPorEstado('RECHAZADO') }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Lista de Documentos -->
+    <div class="documents-section">
+      <div class="section-header">
+        <h3 class="section-title">
+          <span class="title-icon">📁</span>
+          Documentos
+          <span class="document-count">({{ documentosFiltrados.length }})</span>
+        </h3>
+        
+        <div class="section-info" *ngIf="currentFilter">
+          <span class="info-badge">
+            {{ 
+              currentFilter === 'DISPONIBLES' ? '📄 Disponibles' :
+              currentFilter === 'ASIGNADOS' ? '🔍 En Revisión' :
+              currentFilter === 'ACEPTADO' ? '✅ Aceptados' :
+              currentFilter === 'RECHAZADO' ? '❌ Rechazados' : '📋 Todos'
+            }}
+          </span>
+          <button class="btn-clear-filter" (click)="cambiarFiltro(null)">
+            <span class="btn-icon">✕</span>
+            Limpiar
+          </button>
+        </div>
+      </div>
+
+      <!-- Estado Vacío -->
+      <div class="empty-state" *ngIf="documentosFiltrados.length === 0">
+        <div class="empty-icon">
+          {{ 
+            currentFilter === 'DISPONIBLES' ? '📄' :
+            currentFilter === 'ASIGNADOS' ? '🔍' :
+            currentFilter === 'ACEPTADO' ? '✅' :
+            currentFilter === 'RECHAZado' ? '❌' : '📁'
+          }}
+        </div>
+        <h4 class="empty-title">
+          {{ 
+            currentFilter === 'DISPONIBLES' ? 'No hay documentos disponibles' :
+            currentFilter === 'ASIGNADOS' ? 'No hay documentos en revisión' :
+            currentFilter === 'ACEPTADO' ? 'No hay documentos aceptados' :
+            currentFilter === 'RECHAZADO' ? 'No hay documentos rechazados' :
+            'No hay documentos para revisar'
+          }}
+        </h4>
+        <p class="empty-text">
+          {{ 
+            currentFilter ? 'Prueba con otro filtro o actualiza la lista' :
+            'Los documentos aparecerán aquí cuando sean subidos al sistema'
+          }}
+        </p>
+      </div>
+
+      <!-- Lista de Documentos -->
+      <div class="documents-grid" *ngIf="documentosFiltrados.length > 0">
+        <div 
+          *ngFor="let doc of documentosFiltrados" 
+          class="document-card"
+          [ngClass]="{
+            'disponible': isDocumentAvailable(doc),
+            'en-revision': isDocumentAssigned(doc) && !isDocumentFinalized(doc),
+            'aceptado': doc.estado === 'ACEPTADO',
+            'rechazado': doc.estado === 'RECHAZADO',
+            'finalizado': isDocumentFinalized(doc)
+          }"
+        >
+          <div class="card-header">
+            <div class="doc-icon">
+              <span *ngIf="doc.estado === 'ACEPTADO'">✅</span>
+              <span *ngIf="doc.estado === 'RECHAZADO'">❌</span>
+              <span *ngIf="!doc.estado && isDocumentAvailable(doc)">📄</span>
+              <span *ngIf="!doc.estado && isDocumentAssigned(doc)">🔍</span>
+            </div>
+            
+            <div class="doc-status">
+              <span class="status-badge" [ngClass]="getStatusClass(doc.estado)">
+                {{ getStatusText(doc.estado) }}
+              </span>
+              <span class="doc-date">{{ formatDate(doc.fechaSubido || doc.fecha_subido) }}</span>
+            </div>
+          </div>
+          
+          <div class="card-body">
+            <h4 class="doc-title">{{ doc.nombreArchivo || doc.nombre }}</h4>
+            <p class="doc-solicitante">
+              <span class="label-icon">📧</span>
+              {{ doc.solicitanteEmail || doc.solicitante_email }}
+            </p>
+            
+            <div class="doc-meta">
+              <span class="meta-item" *ngIf="doc.atendidoPor || doc.reviewer">
+                <span class="meta-icon">👤</span>
+                {{ doc.atendidoPor || doc.reviewer }}
+                <span *ngIf="(doc.atendidoPor || doc.reviewer) === revisorName" class="yo-badge">Tú</span>
+              </span>
+            </div>
+          </div>
+          
+          <div class="card-actions">
+            <!-- Acciones de Vista -->
+            <div class="view-actions">
+              <button 
+                (click)="verPDF(doc)"
+                class="btn-action btn-view"
+                title="Vista previa"
+              >
+                <span class="action-icon">👁️</span>
+                Ver
+              </button>
+              
+              <button 
+                (click)="descargarPDF(doc)"
+                class="btn-action btn-download"
+                title="Descargar"
+              >
+                <span class="action-icon">📥</span>
+                Descargar
+              </button>
+            </div>
+            
+            <!-- Acciones de Revisión (solo si pool abierto y dueño) -->
+            <div class="review-actions" *ngIf="poolAbierto && poolOwner === revisorName && !isDocumentFinalized(doc)">
+              <button 
+                *ngIf="isDocumentAvailable(doc)"
+                (click)="tomarDocumento(doc)"
+                class="btn-action btn-take"
+                title="Tomar para revisar"
+              >
+                <span class="action-icon">👋</span>
+                Tomar
+              </button>
+              
+              <div class="decision-actions" *ngIf="isDocumentAssigned(doc) && (doc.atendidoPor || doc.reviewer) === revisorName">
+                <button 
+                  (click)="aceptar(doc)"
+                  class="btn-action btn-accept"
+                  title="Aceptar documento"
+                >
+                  <span class="action-icon">✓</span>
+                  Aceptar
+                </button>
+                
+                <button 
+                  (click)="openRejectModal(doc)"
+                  class="btn-action btn-reject"
+                  title="Rechazar documento"
+                >
+                  <span class="action-icon">✗</span>
+                  Rechazar
+                </button>
+              </div>
+            </div>
+            
+            <!-- Estado Finalizado -->
+            <div class="finalized-state" *ngIf="isDocumentFinalized(doc)">
+              <span class="finalized-text">
+                {{ doc.estado === 'ACEPTADO' ? '✅ Aceptado' : '❌ Rechazado' }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Rechazo Mejorado -->
+<div class="modal-overlay" *ngIf="showRejectModal">
+  <div class="modal reject-modal">
+    <div class="modal-header">
+      <div class="modal-icon-header">
+        <span class="modal-main-icon">❌</span>
+        <div class="modal-title-group">
+          <h3 class="modal-title">Rechazar Documento</h3>
+          <p class="modal-subtitle">Proporciona una razón para el rechazo</p>
+        </div>
+      </div>
+      <button class="modal-close" (click)="closeRejectModal()">
+        <span class="close-icon">×</span>
+      </button>
+    </div>
+    
+    <div class="modal-body">
+      <div class="doc-summary">
+        <div class="summary-item">
+          <span class="summary-label">Documento:</span>
+          <span class="summary-value">{{ documentoARechazar?.nombreArchivo || documentoARechazar?.nombre }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Solicitante:</span>
+          <span class="summary-value">{{ documentoARechazar?.solicitanteEmail || documentoARechazar?.solicitante_email }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Fecha:</span>
+          <span class="summary-value">{{ formatDate(documentoARechazar?.fechaSubido || documentoARechazar?.fecha_subido) }}</span>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="motivoRechazo" class="form-label">
+          <span class="label-icon">📝</span>
+          Motivo del Rechazo
+          <span class="required">*</span>
+        </label>
+        <div class="input-group">
+          <textarea 
+            id="motivoRechazo"
+            [(ngModel)]="motivoRechazo"
+            class="form-input textarea"
+            rows="4"
+            placeholder="Describe el motivo del rechazo de manera clara y constructiva..."
+            [class.error]="attemptedReject && !motivoRechazo.trim()"
+            autofocus
+          ></textarea>
+          <div class="char-counter">
+            {{ motivoRechazo.length }}/500
+          </div>
+        </div>
+        <div class="error-message" *ngIf="attemptedReject && !motivoRechazo.trim()">
+          <span class="error-icon">⚠️</span>
+          El motivo del rechazo es obligatorio
+        </div>
+        <div class="form-hint">
+          <span class="hint-icon">💡</span>
+          Este motivo será visible para el solicitante del documento.
+        </div>
+      </div>
+      
+      <div class="suggested-reasons">
+        <p class="suggested-title">Motivos comunes:</p>
+        <div class="reasons-grid">
+          <button 
+            *ngFor="let motivo of ['Documento ilegible', 'Falta información requerida', 'Documento incorrecto', 'Fuera de plazo', 'No cumple requisitos']"
+            (click)="motivoRechazo = motivo"
+            class="reason-chip"
+          >
+            {{ motivo }}
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="closeRejectModal()">
+        <span class="btn-icon">←</span>
+        Cancelar
+      </button>
+      <button class="btn-primary" (click)="confirmarRechazo()">
+        <span class="btn-icon">✗</span>
+        Confirmar Rechazo
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Notificaciones Flotantes -->
+<div class="notification-container">
+  <div class="notification success" *ngIf="showSuccessNotification">
+    <div class="notification-icon">✅</div>
+    <div class="notification-content">
+      <p class="notification-title">¡Éxito!</p>
+      <p class="notification-message">{{ successMessage }}</p>
+    </div>
+    <button class="notification-close" (click)="showSuccessNotification = false">
+      <span class="close-icon">×</span>
+    </button>
+  </div>
+  
+  <div class="notification error" *ngIf="showErrorNotification">
+    <div class="notification-icon">❌</div>
+    <div class="notification-content">
+      <p class="notification-title">Error</p>
+      <p class="notification-message">{{ errorMessage }}</p>
+    </div>
+    <button class="notification-close" (click)="showErrorNotification = false">
+      <span class="close-icon">×</span>
+    </button>
+  </div>
+</div>

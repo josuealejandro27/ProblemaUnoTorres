@@ -1,0 +1,160 @@
+<!-- solicitante-upload.component.html -->
+<div class="upload-container">
+  <div class="upload-card">
+    <!-- Header -->
+    <div class="card-header">
+      <div class="icon-wrapper">
+        <span class="upload-icon">📤</span>
+      </div>
+      <h2>Subir Documento para Revisión</h2>
+      <p class="subtitle">Envía tu archivo PDF y recibirás una notificación con el resultado</p>
+    </div>
+
+    <!-- Formulario -->
+    <form (ngSubmit)="subir()" #uploadForm="ngForm" class="upload-form">
+      
+      <!-- Email Input -->
+      <div class="form-group">
+        <label for="email" class="form-label">
+          <span class="label-icon">📧</span>
+          Correo Electrónico
+          <span class="required">*</span>
+        </label>
+        <input 
+          type="email" 
+          id="email"
+          name="email"
+          [(ngModel)]="email"
+          #emailInput="ngModel"
+          required
+          email
+          placeholder="ejemplo@correo.com"
+          class="form-input"
+          [class.input-error]="emailInput.invalid && emailInput.touched"
+          [class.input-success]="emailInput.valid && emailInput.touched"
+        />
+        
+        <!-- Mensajes de error para email -->
+        <div class="error-message" *ngIf="emailInput.invalid && emailInput.touched">
+          <span class="error-icon">⚠️</span>
+          <span *ngIf="emailInput.errors?.['required']">El correo electrónico es obligatorio</span>
+          <span *ngIf="emailInput.errors?.['email']">Ingresa un correo electrónico válido</span>
+        </div>
+        
+        <!-- Mensaje de éxito -->
+        <div class="success-message" *ngIf="emailInput.valid && emailInput.touched">
+          <span class="success-icon">✓</span>
+          Correo válido
+        </div>
+      </div>
+
+      <!-- File Input -->
+      <div class="form-group">
+        <label for="file" class="form-label">
+          <span class="label-icon">📎</span>
+          Archivo PDF
+          <span class="required">*</span>
+        </label>
+        
+        <div class="file-input-wrapper" 
+             [class.has-file]="selectedFile"
+             [class.file-error]="!selectedFile && attemptedSubmit">
+          <input 
+            type="file" 
+            id="file"
+            name="file"
+            accept="application/pdf"
+            (change)="onFileChange($event)"
+            class="file-input"
+            #fileInput
+          />
+          <div class="file-input-display">
+            <div class="file-icon">
+              <span *ngIf="!selectedFile">📄</span>
+              <span *ngIf="selectedFile" class="file-success">✓</span>
+            </div>
+            <div class="file-text">
+              <span class="file-main-text" *ngIf="!selectedFile">
+                Arrastra tu archivo PDF aquí o haz clic para seleccionar
+              </span>
+              <span class="file-main-text file-selected" *ngIf="selectedFile">
+                {{ selectedFile.name }}
+              </span>
+              <span class="file-sub-text">
+                Solo archivos PDF
+              </span>
+            </div>
+            <button 
+              type="button" 
+              class="btn-select-file"
+              (click)="fileInput.click()"
+              *ngIf="!selectedFile"
+            >
+              Seleccionar
+            </button>
+            <button 
+              type="button" 
+              class="btn-remove-file"
+              (click)="removeFile()"
+              *ngIf="selectedFile"
+            >
+              Eliminar
+            </button>
+          </div>
+        </div>
+
+        <!-- Error de archivo -->
+        <div class="error-message" *ngIf="!selectedFile && attemptedSubmit">
+          <span class="error-icon">⚠️</span>
+          Debes seleccionar un archivo PDF
+        </div>
+
+        <!-- Información del archivo -->
+        <div class="file-info" *ngIf="selectedFile">
+          <span class="info-icon">ℹ️</span>
+          Tamaño: {{ formatFileSize(selectedFile.size) }}
+        </div>
+      </div>
+
+      <!-- Botón de envío -->
+      <div class="form-actions">
+        <button 
+          type="submit" 
+          class="btn-submit"
+          [disabled]="isUploading"
+          [class.uploading]="isUploading"
+        >
+          <span *ngIf="!isUploading">
+            <span class="btn-icon">🚀</span>
+            Subir Documento
+          </span>
+          <span *ngIf="isUploading">
+            <span class="spinner"></span>
+            Subiendo...
+          </span>
+        </button>
+      </div>
+    </form>
+
+    <!-- Notificación de éxito -->
+    <div class="notification success" *ngIf="showSuccessNotification" [@slideIn]>
+      <div class="notification-icon">✓</div>
+      <div class="notification-content">
+        <h4>¡Documento subido exitosamente!</h4>
+        <p>ID del documento: <strong>{{ uploadedDocId }}</strong></p>
+        <p>Recibirás una notificación por correo cuando sea revisado.</p>
+      </div>
+      <button class="notification-close" (click)="showSuccessNotification = false">×</button>
+    </div>
+
+    <!-- Notificación de error -->
+    <div class="notification error" *ngIf="showErrorNotification" [@slideIn]>
+      <div class="notification-icon">✗</div>
+      <div class="notification-content">
+        <h4>Error al subir el documento</h4>
+        <p>{{ errorMessage }}</p>
+      </div>
+      <button class="notification-close" (click)="showErrorNotification = false">×</button>
+    </div>
+  </div>
+</div>
