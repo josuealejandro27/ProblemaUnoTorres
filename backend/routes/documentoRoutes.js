@@ -1,4 +1,4 @@
-// routes/documentoRoutes.js
+// routes/documentoRoutes.js - VERSIÓN CORREGIDA
 const express = require('express');
 const router = express.Router();
 const documentoController = require('../controllers/documentoController');
@@ -47,11 +47,15 @@ router.post('/subir', upload.single('pdf'), documentoController.subirDocumento);
 // GET /api/documentos - Listar todos los documentos (REVISORES)
 router.get('/', documentoController.listarDocumentos);
 
-// POST /api/documentos/atendiendo/:id - Marcar como EN_REVISION (REVISOR)
-router.post('/atendiendo/:id', documentoController.marcarAtendiendo);
+// AGREGAR ALIAS PARA LA RUTA QUE ESTÁ LLAMANDO EL FRONTEND
+router.get('/pendientes', documentoController.listarDocumentos);
+router.get('/listar', documentoController.listarDocumentos);
 
-// POST /api/documentos/revisar/:id - Aceptar o Rechazar (REVISOR)
-router.post('/revisar/:id', documentoController.revisarDocumento);
+// POST /api/documentos/:id/atendiendo - Marcar como EN_REVISION (REVISOR)
+router.post('/:id/atendiendo', documentoController.marcarAtendiendo);
+
+// POST /api/documentos/:id/revisar - Aceptar o Rechazar (REVISOR)
+router.post('/:id/revisar', documentoController.revisarDocumento);
 
 // GET /api/documentos/descargar/:id - Descargar documento PDF
 router.get('/descargar/:id', documentoController.descargarDocumento);

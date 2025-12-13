@@ -1,4 +1,4 @@
-// backend/services/documentPoolSingleton.js - VERSIÓN ADAPTADA
+// backend/services/documentPoolSingleton.js - VERSIÓN CORREGIDA
 const documentoModel = require('../models/documentoModel');
 
 class DocumentPool {

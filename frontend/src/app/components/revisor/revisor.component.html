@@ -1,4 +1,4 @@
-<!-- revisor.component.html -->
+<!-- revisor.component.html - VERSIÓN COMPLETA CORREGIDA -->
 <div class="revisor-container">
   <div class="revisor-card">
     <!-- Header -->
@@ -45,14 +45,23 @@
           </span>
         </div>
         
+        <!-- Pool Info cuando está activo -->
         <div class="pool-info" *ngIf="poolAbierto">
           <div class="pool-owner">
             <span class="owner-icon">👑</span>
             <span class="owner-text">
               <strong>{{ poolOwner }}</strong> está usando el pool
-              <span *ngIf="poolOwner === revisorName" class="yo-badge-pool">(TÚ)</span>
+              <!-- Badge para pestaña original -->
+              <span *ngIf="poolOwner === revisorName && isOriginalOwner" class="yo-badge-pool">
+                (TÚ - Pestaña Original)
+              </span>
+              <!-- Badge para otra pestaña del mismo usuario -->
+              <span *ngIf="poolOwner === revisorName && !isOriginalOwner" class="yo-badge-secondary">
+                (TÚ - Otra Pestaña)
+              </span>
             </span>
           </div>
+          
           <div class="pool-stats">
             <span class="stat">
               <span class="stat-icon">⏱️</span>
@@ -64,76 +73,91 @@
             </span>
           </div>
           
-      <!-- Mensaje de advertencia si otro tiene el pool -->
-      <div class="pool-warning" *ngIf="poolAbierto && poolOwner !== revisorName">
-        <span class="warning-icon">⏳</span>
-        <span class="warning-text">
-          Espera a que {{ poolOwner }} libere el pool para poder abrirlo
-        </span>
+          <!-- ✅ MENSAJE ESPECÍFICO: Mismo usuario, otra pestaña -->
+          <div class="pool-warning same-user" *ngIf="poolAbierto && poolOwner === revisorName && !isOriginalOwner">
+            <span class="warning-icon">ℹ️</span>
+            <span class="warning-text">
+              Ya tienes el pool abierto en otra pestaña. Solo puedes cerrarlo desde la pestaña original.
+            </span>
+          </div>
+          
+          <!-- Mensaje de advertencia si OTRO usuario tiene el pool -->
+          <div class="pool-warning" *ngIf="poolAbierto && poolOwner !== revisorName">
+            <span class="warning-icon">⏳</span>
+            <span class="warning-text">
+              Espera a que {{ poolOwner }} libere el pool para poder abrirlo
+            </span>
+          </div>
+        </div>
+        
+        <!-- Pool Info cuando está disponible -->
+        <div class="pool-info" *ngIf="!poolAbierto">
+          <p class="pool-message">
+            <span class="message-icon">💡</span>
+            El pool está disponible. Sé el primero en abrirlo para revisar documentos
+          </p>
+        </div>
+      </div>
+      
+      <div class="pool-actions">
+        <!-- ✅ Botón Abrir Pool - solo si no hay pool activo -->
+        <button 
+          *ngIf="!poolAbierto"
+          (click)="abrirPool()"
+          class="btn-pool btn-abrir"
+          [disabled]="!revisorName || isLoading"
+        >
+          <span class="btn-icon">🔓</span>
+          Abrir Pool (Solo 1 a la vez)
+        </button>
+        
+        <!-- ✅ Botón Cerrar Pool - SOLO si es dueño Y pestaña original -->
+        <button 
+          *ngIf="poolAbierto && poolOwner === revisorName && isOriginalOwner"
+          (click)="cerrarPool()"
+          class="btn-pool btn-cerrar"
+          [disabled]="isLoading"
+        >
+          <span class="btn-icon">🔒</span>
+          Cerrar y Liberar Pool
+        </button>
+        
+        <!-- ✅ MENSAJE INFO: Mismo usuario pero otra pestaña -->
+        <div *ngIf="poolAbierto && poolOwner === revisorName && !isOriginalOwner" class="pool-info-message">
+          <span class="info-icon">ℹ️</span>
+          Tienes el pool abierto en otra pestaña
+        </div>
+        
+        <!-- Mensaje si otro tiene el pool -->
+        <div *ngIf="poolAbierto && poolOwner !== revisorName" class="pool-ocupado-message">
+          <span class="ocupado-icon">🔴</span>
+          Pool ocupado por {{ poolOwner }}
+        </div>
+        
+        <!-- Botones adicionales -->
+        <button 
+          (click)="cargar()"
+          class="btn-pool btn-refresh"
+          [disabled]="isLoading"
+        >
+          <span class="btn-icon" *ngIf="!isLoading">🔄</span>
+          <span class="spinner-small" *ngIf="isLoading"></span>
+          {{ isLoading ? 'Cargando...' : 'Actualizar' }}
+        </button>
+        
+        <button 
+          (click)="toggleActividades()"
+          class="btn-pool btn-actividades"
+          [class.active]="showActividades"
+        >
+          <span class="btn-icon">📋</span>
+          Actividades
+          <span class="badge-count" *ngIf="actividades.length > 0">
+            {{ actividades.length }}
+          </span>
+        </button>
       </div>
     </div>
-    
-    <div class="pool-info" *ngIf="!poolAbierto">
-      <p class="pool-message">
-        <span class="message-icon">💡</span>
-        El pool está disponible. Sé el primero en abrirlo para revisar documentos
-      </p>
-    </div>
-  </div>
-  
-  <div class="pool-actions">
-    <!-- Botón Abrir Pool - solo si no hay pool activo -->
-    <button 
-      *ngIf="!poolAbierto"
-      (click)="abrirPool()"
-      class="btn-pool btn-abrir"
-      [disabled]="!revisorName || isLoading"
-    >
-      <span class="btn-icon">🔓</span>
-      Abrir Pool (Solo 1 a la vez)
-    </button>
-    
-    <!-- Botón Cerrar Pool - solo si es dueño -->
-    <button 
-      *ngIf="poolAbierto && poolOwner === revisorName"
-      (click)="cerrarPool()"
-      class="btn-pool btn-cerrar"
-      [disabled]="isLoading"
-    >
-      <span class="btn-icon">🔒</span>
-      Cerrar y Liberar Pool
-    </button>
-    
-    <!-- Mensaje si otro tiene el pool -->
-    <div *ngIf="poolAbierto && poolOwner !== revisorName" class="pool-ocupado-message">
-      <span class="ocupado-icon">🔴</span>
-      Pool ocupado por {{ poolOwner }}
-    </div>
-    
-    <!-- Botones adicionales -->
-    <button 
-      (click)="cargar()"
-      class="btn-pool btn-refresh"
-      [disabled]="isLoading"
-    >
-      <span class="btn-icon" *ngIf="!isLoading">🔄</span>
-      <span class="spinner-small" *ngIf="isLoading"></span>
-      {{ isLoading ? 'Cargando...' : 'Actualizar' }}
-    </button>
-    
-    <button 
-      (click)="toggleActividades()"
-      class="btn-pool btn-actividades"
-      [class.active]="showActividades"
-    >
-      <span class="btn-icon">📋</span>
-      Actividades
-      <span class="badge-count" *ngIf="actividades.length > 0">
-        {{ actividades.length }}
-      </span>
-    </button>
-  </div>
-</div>
 
     <!-- Panel de Actividades en Tiempo Real -->
     <div class="actividades-panel" *ngIf="showActividades">
@@ -256,7 +280,7 @@
             currentFilter === 'DISPONIBLES' ? '📄' :
             currentFilter === 'ASIGNADOS' ? '🔍' :
             currentFilter === 'ACEPTADO' ? '✅' :
-            currentFilter === 'RECHAZado' ? '❌' : '📁'
+            currentFilter === 'RECHAZADO' ? '❌' : '📁'
           }}
         </div>
         <h4 class="empty-title">
@@ -343,8 +367,8 @@
               </button>
             </div>
             
-            <!-- Acciones de Revisión (solo si pool abierto y dueño) -->
-            <div class="review-actions" *ngIf="poolAbierto && poolOwner === revisorName && !isDocumentFinalized(doc)">
+            <!-- ✅ Acciones de Revisión (solo si pool abierto Y es pestaña original) -->
+            <div class="review-actions" *ngIf="puedeControlarPool && !isDocumentFinalized(doc)">
               <button 
                 *ngIf="isDocumentAvailable(doc)"
                 (click)="tomarDocumento(doc)"

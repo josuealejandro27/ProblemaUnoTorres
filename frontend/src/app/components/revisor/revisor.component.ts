@@ -1,5 +1,7 @@
+// revisor.component.ts - VERSIÓN CORREGIDA CON SINGLETON
 import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { DocumentService } from '../../services/document.service';
+import { PoolService } from '../../services/pool.service';
 import { interval, Subscription } from 'rxjs';
 
 @Component({
@@ -28,126 +30,204 @@ export class RevisorComponent implements OnInit, OnDestroy {
   successMessage = '';
   errorMessage = '';
 
-  // Pool de revisión - CON SISTEMA DE BLOQUEO GLOBAL
+  // Pool de revisión
   poolAbierto = false;
   poolOwner: string = '';
   fechaApertura: Date | null = null;
   documentosRevisados: number = 0;
   poolSubscription: Subscription | null = null;
-
-  // Registro de actividades en tiempo real
+  
+  // ✅ Control de sesión - SIMPLIFICADO
+  isOriginalOwner = false; // Esta pestaña abrió el pool
+  
+  // Registro de actividades
   actividades: any[] = [];
   showActividades = false;
 
-  // Clave para localStorage
-  private readonly POOL_STORAGE_KEY = 'document_review_pool';
-  private readonly POOL_TIMEOUT = 5 * 60 * 1000; // 5 minutos de timeout
-
-  constructor(private docService: DocumentService) {}
+  constructor(
+    private docService: DocumentService,
+    private poolService: PoolService
+  ) {
+    // ✅ Ya no necesitamos generar userId aquí
+    // El servicio Singleton lo maneja internamente
+  }
 
   ngOnInit() {
     this.cargar();
     this.verificarPoolEstado();
     
-    // Escuchar cambios en el pool desde otras pestañas
-    window.addEventListener('storage', this.handleStorageEvent.bind(this));
+    // Verificar pool cada 5 segundos
+    this.poolSubscription = interval(5000).subscribe(() => {
+      this.verificarPoolEstado();
+    });
   }
 
   ngOnDestroy() {
-    // Si este usuario cerró la pestaña y era el dueño del pool, liberarlo
-    if (this.poolAbierto && this.poolOwner === this.revisorName) {
-      this.liberarPoolPorTimeout();
-    }
-    
     if (this.poolSubscription) {
       this.poolSubscription.unsubscribe();
     }
     
-    window.removeEventListener('storage', this.handleStorageEvent.bind(this));
+    // ✅ El servicio maneja la liberación automáticamente
+    // Solo necesitamos llamarlo si somos dueños
+    if (this.isOriginalOwner && this.poolAbierto) {
+      this.poolService.releasePool().subscribe();
+    }
   }
 
-  // Escuchar cuando el usuario cierra la pestaña
   @HostListener('window:beforeunload', ['$event'])
   beforeunloadHandler(event: Event) {
-    if (this.poolAbierto && this.poolOwner === this.revisorName) {
-      this.liberarPoolPorTimeout();
+    // ✅ El servicio tiene su propio handler de beforeunload
+    // Este es redundante pero mantiene compatibilidad
+    if (this.isOriginalOwner && this.poolAbierto) {
+      // La liberación real la hace el servicio via sendBeacon
+      this.poolService.releasePool().subscribe();
     }
   }
 
   /**
-   * Manejar eventos de almacenamiento entre pestañas
-   */
-  private handleStorageEvent(event: StorageEvent) {
-    if (event.key === this.POOL_STORAGE_KEY) {
-      this.verificarPoolEstado();
-    }
-  }
-
-  /**
-   * Verificar el estado del pool desde localStorage
+   * ✅ VERIFICAR POOL - SIMPLIFICADO
    */
   private verificarPoolEstado() {
-    const poolData = localStorage.getItem(this.POOL_STORAGE_KEY);
-    
-    if (!poolData) {
-      this.poolAbierto = false;
-      this.poolOwner = '';
+    this.poolService.checkStatus().subscribe({
+      next: (status) => {
+        this.poolAbierto = !status.isAvailable;
+        this.poolOwner = status.currentUser || '';
+        
+        // ✅ El servicio determina si somos dueños
+        this.isOriginalOwner = status.isOwner || false;
+        
+        if (this.poolAbierto && status.expiresAt) {
+          this.fechaApertura = new Date(status.expiresAt);
+        } else {
+          this.fechaApertura = null;
+        }
+      },
+      error: (err) => {
+        console.error('Error al verificar pool:', err);
+        this.showError('Error al verificar estado del pool');
+      }
+    });
+  }
+
+  /**
+   * ✅ ABRIR POOL - SIMPLIFICADO
+   */
+  abrirPool() {
+    if (!this.revisorName.trim()) {
+      this.showError('Por favor selecciona tu nombre de revisor');
       return;
     }
 
-    try {
-      const pool = JSON.parse(poolData);
-      const ahora = new Date().getTime();
-      const tiempoPool = new Date(pool.fechaApertura).getTime();
-      
-      // Verificar si el pool ha expirado (5 minutos)
-      if (ahora - tiempoPool > this.POOL_TIMEOUT) {
-        localStorage.removeItem(this.POOL_STORAGE_KEY);
-        this.poolAbierto = false;
-        this.poolOwner = '';
-        console.log('Pool expirado, liberando...');
-        return;
-      }
-      
-      this.poolAbierto = true;
-      this.poolOwner = pool.revisor;
-      this.fechaApertura = new Date(pool.fechaApertura);
-      this.documentosRevisados = pool.documentosRevisados || 0;
-      
-      // Si este revisor es el dueño, actualizar contador
-      if (this.revisorName === this.poolOwner) {
-        this.iniciarActualizacionAutomatica();
-      }
-    } catch (error) {
-      console.error('Error al parsear datos del pool:', error);
-      localStorage.removeItem(this.POOL_STORAGE_KEY);
-      this.poolAbierto = false;
-      this.poolOwner = '';
-    }
-  }
-
-  /**
-   * Guardar estado del pool en localStorage
-   */
-  private guardarPoolEstado() {
-    const poolData = {
-      revisor: this.poolOwner,
-      fechaApertura: this.fechaApertura,
-      documentosRevisados: this.documentosRevisados,
-      timestamp: new Date().getTime()
-    };
+    this.isLoading = true;
     
-    localStorage.setItem(this.POOL_STORAGE_KEY, JSON.stringify(poolData));
+    // ✅ Configurar datos del usuario en el servicio
+    this.poolService.setUserData(this.revisorName, `${this.revisorName}@example.com`);
+    
+    this.poolService.acquirePool().subscribe({
+      next: (response) => {
+        this.isLoading = false;
+        
+        if (response.success) {
+          this.poolAbierto = true;
+          this.poolOwner = this.revisorName;
+          this.fechaApertura = new Date();
+          this.documentosRevisados = 0;
+          
+          // ✅ El servicio marca automáticamente el ownership
+          this.isOriginalOwner = true;
+          
+          this.showSuccess(`✅ ${this.revisorName} abrió el pool. Ahora eres el único revisor activo.`);
+          this.agregarActividad('🎯', `${this.revisorName} tomó control del pool`, 'propia');
+          
+          // Iniciar monitoreo de actividad
+          this.poolService.startActivityMonitoring();
+          
+          this.cargar(true);
+        } else {
+          this.showError(response.message || 'No se pudo abrir el pool');
+        }
+      },
+      error: (err) => {
+        this.isLoading = false;
+        this.showError(`Error: ${err.message || 'Error desconocido'}`);
+      }
+    });
   }
 
   /**
-   * Liberar pool por timeout
+   * ✅ CERRAR POOL - SIMPLIFICADO
    */
-  private liberarPoolPorTimeout() {
-    console.log('Liberando pool por timeout...');
-    localStorage.removeItem(this.POOL_STORAGE_KEY);
+  cerrarPool() {
+    // ✅ Validaciones básicas
+    if (!this.poolAbierto) {
+      this.showError('No hay pool abierto para cerrar');
+      return;
+    }
+
+    if (!this.isOriginalOwner) {
+      this.showError('Solo puedes cerrar el pool desde la pestaña donde lo abriste');
+      return;
+    }
+
+    this.isLoading = true;
+    
+    // ✅ El servicio verifica internamente si podemos liberar
+    this.poolService.releasePool().subscribe({
+      next: (response) => {
+        this.isLoading = false;
+        
+        if (response.success) {
+          this.poolAbierto = false;
+          this.poolOwner = '';
+          this.fechaApertura = null;
+          this.isOriginalOwner = false;
+          
+          this.poolService.stopActivityMonitoring();
+          
+          this.showSuccess('🔓 Pool cerrado. Ahora otro revisor puede tomarlo.');
+          this.agregarActividad('🔒', `${this.revisorName} liberó el pool`, 'propia');
+          
+          this.cargar(true);
+        } else {
+          this.showError(response.message || 'Error al cerrar pool');
+        }
+      },
+      error: (err) => {
+        this.isLoading = false;
+        this.showError(`Error al cerrar pool: ${err.message || 'Error desconocido'}`);
+      }
+    });
   }
 
+  /**
+   * Tomar documento para revisión
+   */
+  tomarDocumento(doc: any) {
+    if (!this.esDueñoDelPool) {
+      this.showError('Debes ser el dueño del pool para tomar documentos');
+      return;
+    }
+    
+    if (!this.isDocumentAvailable(doc)) {
+      this.showError('Este documento ya está siendo revisado');
+      return;
+    }
+    
+    this.docService.markAttending(doc.id, this.revisorName).subscribe({
+      next: () => {
+        this.showSuccess(`📄 Documento "${doc.nombreArchivo}" tomado para revisión`);
+        this.agregarActividad('📝', `Tomó "${doc.nombreArchivo}" para revisar`, 'propia');
+        this.cargar(true);
+      },
+      error: (err: any) => {
+        this.showError('Error al tomar documento: ' + err.message);
+      }
+    });
+  }
+
+  /**
+   * Cargar lista de documentos
+   */
   cargar(silent = false) {
     if (!silent) {
       this.isLoading = true;
@@ -157,170 +237,33 @@ export class RevisorComponent implements OnInit, OnDestroy {
       next: (docs: any[]) => {
         this.documentos = docs;
         this.isLoading = false;
-        
-        // Actualizar actividades en tiempo real
-        this.actualizarActividades();
-        
         console.log('📥 Documentos cargados:', this.documentos.length);
       },
       error: (err: any) => {
         this.isLoading = false;
-        this.showError('Error al cargar documentos: ' + (err.message || 'Verifica que el backend esté corriendo'));
+        this.showError('Error al cargar documentos: ' + (err.message || 'Verifica el backend'));
         console.error('Error detallado:', err);
-        
-        // Mostrar documentos de prueba si el backend no responde
-        if (err.message?.includes('No se pudo conectar') || !this.documentos.length) {
-          this.documentos = this.getDocumentosDePrueba();
-          this.showError('Modo demo: usando datos de prueba. El backend no está disponible.');
-        }
       }
     });
   }
 
   /**
-   * Datos de prueba para desarrollo
-   */
-  private getDocumentosDePrueba(): any[] {
-    return [
-      {
-        id: '1',
-        nombreArchivo: 'documento_1.pdf',
-        solicitanteEmail: 'cliente1@ejemplo.com',
-        fechaSubido: new Date('2024-01-15T10:30:00'),
-        estado: 'PENDIENTE',
-        atendidoPor: null
-      },
-      {
-        id: '2',
-        nombreArchivo: 'documento_2.pdf',
-        solicitanteEmail: 'cliente2@ejemplo.com',
-        fechaSubido: new Date('2024-01-15T11:15:00'),
-        estado: 'EN_REVISION',
-        atendidoPor: 'RevisorA'
-      },
-      {
-        id: '3',
-        nombreArchivo: 'documento_3.pdf',
-        solicitanteEmail: 'cliente3@ejemplo.com',
-        fechaSubido: new Date('2024-01-14T09:45:00'),
-        estado: 'ACEPTADO',
-        atendidoPor: 'RevisorB'
-      },
-      {
-        id: '4',
-        nombreArchivo: 'documento_4.pdf',
-        solicitanteEmail: 'cliente4@ejemplo.com',
-        fechaSubido: new Date('2024-01-14T14:20:00'),
-        estado: 'RECHAZADO',
-        atendidoPor: 'RevisorA',
-        motivoRechazo: 'Documento ilegible'
-      }
-    ];
-  }
-
-  /**
-   * ABRIR POOL - Solo uno a la vez
-   */
-  abrirPool() {
-    if (!this.revisorName.trim()) {
-      this.showError('Por favor selecciona tu nombre de revisor');
-      return;
-    }
-
-    // Verificar si ya hay un pool activo
-    this.verificarPoolEstado();
-    
-    if (this.poolAbierto) {
-      this.showError(`❌ El pool está ocupado por ${this.poolOwner}. Solo puede haber un revisor a la vez.`);
-      return;
-    }
-
-    this.isLoading = true;
-    
-    // Simular apertura de pool (si no tienes backend)
-    setTimeout(() => {
-      this.poolAbierto = true;
-      this.poolOwner = this.revisorName;
-      this.fechaApertura = new Date();
-      this.documentosRevisados = 0;
-      
-      // Guardar en localStorage para otras pestañas
-      this.guardarPoolEstado();
-      
-      // Iniciar actualización automática
-      this.iniciarActualizacionAutomatica();
-      
-      this.isLoading = false;
-      this.showSuccess(`✅ ${this.revisorName} abrió el pool. Ahora eres el único revisor activo.`);
-      this.agregarActividad('🎯', `${this.revisorName} tomó control del pool`, 'propia');
-      
-      // Recargar documentos
-      this.cargar(true);
-    }, 500);
-  }
-
-  /**
-   * CERRAR POOL - Liberar para otros
-   */
-  cerrarPool() {
-    if (!this.poolAbierto || this.poolOwner !== this.revisorName) {
-      this.showError('No tienes permiso para cerrar este pool');
-      return;
-    }
-
-    this.isLoading = true;
-    
-    // Simular cierre de pool
-    setTimeout(() => {
-      this.poolAbierto = false;
-      this.poolOwner = '';
-      this.fechaApertura = null;
-      
-      // Eliminar de localStorage
-      localStorage.removeItem(this.POOL_STORAGE_KEY);
-      
-      // Detener actualización automática
-      if (this.poolSubscription) {
-        this.poolSubscription.unsubscribe();
-        this.poolSubscription = null;
-      }
-      
-      this.isLoading = false;
-      this.showSuccess('🔓 Pool cerrado. Ahora otro revisor puede tomarlo.');
-      this.agregarActividad('🔒', `${this.revisorName} liberó el pool`, 'propia');
-      
-      // Recargar documentos
-      this.cargar(true);
-    }, 500);
-  }
-
-  /**
-   * Iniciar actualización automática
-   */
-  private iniciarActualizacionAutomatica() {
-    // Actualizar cada 10 segundos
-    this.poolSubscription = interval(10000).subscribe(() => {
-      this.cargar(true);
-      this.verificarPoolEstado(); // Verificar si aún somos dueños
-    });
-  }
-
-  /**
-   * Verificar si este revisor es el dueño del pool
+   * ✅ Getters de estado del pool
    */
   get esDueñoDelPool(): boolean {
-    return this.poolAbierto && this.poolOwner === this.revisorName;
+    return this.poolAbierto && this.poolOwner === this.revisorName && this.isOriginalOwner;
   }
 
-  /**
-   * Verificar si hay pool activo de otro revisor
-   */
   get poolOcupadoPorOtro(): boolean {
     return this.poolAbierto && this.poolOwner !== this.revisorName;
   }
 
+  get puedeControlarPool(): boolean {
+    return this.esDueñoDelPool;
+  }
+
   /**
-   * Cambiar filtro
+   * Cambiar filtro de documentos
    */
   cambiarFiltro(filtro: string | null) {
     if (this.currentFilter === filtro) {
@@ -344,16 +287,16 @@ export class RevisorComponent implements OnInit, OnDestroy {
       case 'ASIGNADOS':
         return this.documentos.filter(doc => this.isDocumentAssigned(doc));
       case 'ACEPTADO':
-        return this.documentos.filter(doc => doc.estado === 'ACEPTADO');
+        return this.documentos.filter(doc => this.normalizeEstado(doc.estado) === 'ACEPTADO');
       case 'RECHAZADO':
-        return this.documentos.filter(doc => doc.estado === 'RECHAZADO');
+        return this.documentos.filter(doc => this.normalizeEstado(doc.estado) === 'RECHAZADO');
       default:
         return this.documentos;
     }
   }
 
   /**
-   * Documentos disponibles para revisión
+   * Verificar si documento está disponible
    */
   isDocumentAvailable(doc: any): boolean {
     const atendidoPor = doc.atendidoPor || doc.reviewer;
@@ -362,21 +305,16 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Documentos asignados (a cualquier revisor)
+   * Verificar si documento está asignado
    */
   isDocumentAssigned(doc: any): boolean {
     const atendidoPor = doc.atendidoPor || doc.reviewer;
     const estado = this.normalizeEstado(doc.estado);
-    
-    const tieneRevisor = !!atendidoPor;
-    const estaEnProceso = estado === 'EN_REVISION' || estado === 'PENDIENTE' || !estado;
-    const noFinalizado = !this.isDocumentFinalized(doc);
-    
-    return tieneRevisor && estaEnProceso && noFinalizado;
+    return !!atendidoPor && estado === 'EN_REVISION' && !this.isDocumentFinalized(doc);
   }
 
   /**
-   * Documento finalizado
+   * Verificar si documento está finalizado
    */
   isDocumentFinalized(doc: any): boolean {
     const estado = this.normalizeEstado(doc.estado);
@@ -384,51 +322,25 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * TOMAR DOCUMENTO PARA REVISIÓN (dentro del pool)
-   */
-  tomarDocumento(doc: any) {
-    if (!this.esDueñoDelPool) {
-      this.showError('Debes ser el dueño del pool para tomar documentos');
-      return;
-    }
-
-    if (!this.isDocumentAvailable(doc)) {
-      this.showError('Este documento ya está siendo revisado');
-      return;
-    }
-
-    this.docService.markAttending(doc.id, this.revisorName).subscribe({
-      next: () => {
-        this.showSuccess(`📄 Documento "${doc.nombreArchivo}" tomado para revisión`);
-        this.agregarActividad('📝', `Tomó "${doc.nombreArchivo}" para revisar`, 'propia');
-        this.cargar(true);
-      },
-      error: (err: any) => {
-        this.showError('Error al tomar documento: ' + err.message);
-      }
-    });
-  }
-
-  /**
-   * ACEPTAR DOCUMENTO (sin cerrar pool)
+   * Aceptar documento
    */
   aceptar(doc: any) {
     if (!this.esDueñoDelPool) {
       this.showError('Debes ser el dueño del pool para aceptar documentos');
       return;
     }
-
+    
     const atendidoPor = doc.atendidoPor || doc.reviewer;
     if (!atendidoPor || atendidoPor !== this.revisorName) {
       this.showError('Este documento no está asignado a ti');
       return;
     }
-
+    
     if (this.isDocumentFinalized(doc)) {
       this.showError('Este documento ya fue finalizado');
       return;
     }
-
+    
     this.docService.reviewDocument(doc.id, 'Aceptado', this.revisorName).subscribe({
       next: () => {
         this.documentosRevisados++;
@@ -450,18 +362,18 @@ export class RevisorComponent implements OnInit, OnDestroy {
       this.showError('Debes ser el dueño del pool para rechazar documentos');
       return;
     }
-
+    
     const atendidoPor = doc.atendidoPor || doc.reviewer;
     if (!atendidoPor || atendidoPor !== this.revisorName) {
       this.showError('Este documento no está asignado a ti');
       return;
     }
-
+    
     if (this.isDocumentFinalized(doc)) {
       this.showError('Este documento ya fue finalizado');
       return;
     }
-
+    
     this.documentoARechazar = doc;
     this.motivoRechazo = '';
     this.attemptedReject = false;
@@ -469,15 +381,15 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Confirmar rechazo
+   * Confirmar rechazo de documento
    */
   confirmarRechazo() {
     this.attemptedReject = true;
-
+    
     if (!this.motivoRechazo.trim()) {
       return;
     }
-
+    
     const doc = this.documentoARechazar;
     
     this.docService.reviewDocumentWithReason(
@@ -522,39 +434,15 @@ export class RevisorComponent implements OnInit, OnDestroy {
       revisor: this.revisorName
     };
     
-    this.actividades.unshift(actividad); // Agregar al inicio
+    this.actividades.unshift(actividad);
     
-    // Mantener solo las últimas 20 actividades
     if (this.actividades.length > 20) {
       this.actividades.pop();
     }
   }
 
   /**
-   * Actualizar actividades automáticamente
-   */
-  private actualizarActividades() {
-    // Agregar actividades de otros revisores basadas en cambios de documentos
-    this.documentos.forEach(doc => {
-      if (doc.ultimaAccion && doc.ultimaAccion.revisor !== this.revisorName) {
-        const existe = this.actividades.some(a => 
-          a.texto.includes(doc.nombreArchivo) && 
-          (new Date().getTime() - a.fecha.getTime()) < 5000
-        );
-        
-        if (!existe) {
-          if (doc.estado === 'ACEPTADO') {
-            this.agregarActividad('✅', `${doc.ultimaAccion.revisor} aceptó "${doc.nombreArchivo}"`, 'otro');
-          } else if (doc.estado === 'RECHAZADO') {
-            this.agregarActividad('❌', `${doc.ultimaAccion.revisor} rechazó "${doc.nombreArchivo}"`, 'otro');
-          }
-        }
-      }
-    });
-  }
-
-  /**
-   * Formatear tiempo transcurrido
+   * Obtener tiempo transcurrido desde apertura del pool
    */
   getTiempoTranscurrido(): string {
     if (!this.fechaApertura) return '';
@@ -568,7 +456,7 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Contadores
+   * Contadores de documentos por estado
    */
   contarDisponibles(): number {
     return this.documentos.filter(doc => this.isDocumentAvailable(doc)).length;
@@ -584,7 +472,7 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Normalizar estado
+   * Normalizar estado del documento
    */
   private normalizeEstado(estado: string): string {
     if (!estado) return '';
@@ -615,14 +503,10 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Obtener texto del estado
+   * Obtener texto legible del estado
    */
   getStatusText(estado: string): string {
     if (!estado) return 'Pendiente';
-    
-    if (estado === 'EN REVISIÓN' || estado === 'EN_REVISION' || estado === 'En revisión') {
-      return 'En Revisión';
-    }
     
     const normalized = this.normalizeEstado(estado);
     const texts: any = {
@@ -650,7 +534,7 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Mostrar notificaciones
+   * Mostrar notificación de éxito
    */
   private showSuccess(message: string) {
     this.successMessage = message;
@@ -660,6 +544,9 @@ export class RevisorComponent implements OnInit, OnDestroy {
     }, 4000);
   }
 
+  /**
+   * Mostrar notificación de error
+   */
   private showError(message: string) {
     this.errorMessage = message;
     this.showErrorNotification = true;
@@ -669,7 +556,7 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Descargar/Ver PDF
+   * Descargar PDF
    */
   descargarPDF(doc: any) {
     if (!doc.id) {
@@ -689,6 +576,9 @@ export class RevisorComponent implements OnInit, OnDestroy {
     this.showSuccess('Descargando documento...');
   }
 
+  /**
+   * Ver PDF en nueva pestaña
+   */
   verPDF(doc: any) {
     if (!doc.id) {
       this.showError('Documento no disponible para visualización');
@@ -701,14 +591,14 @@ export class RevisorComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Alternar visibilidad de actividades
+   * Toggle panel de actividades
    */
   toggleActividades() {
     this.showActividades = !this.showActividades;
   }
 
   /**
-   * Limpiar actividades
+   * Limpiar registro de actividades
    */
   clearActividades() {
     this.actividades = [];

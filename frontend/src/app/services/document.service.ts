@@ -17,52 +17,57 @@ export class DocumentService {
 
   // Método para obtener documentos con manejo de errores mejorado
   getDocuments(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.apiUrl}/documentos/pendientes`).pipe(
+    return this.http.get<any[]>(`${this.apiUrl}/documentos`).pipe(
       catchError(this.handleError)
     );
   }
 
   // Método para subir PDF
   uploadPDF(formData: FormData): Observable<any> {
-    return this.http.post(`${this.apiUrl}/documentos/upload`, formData).pipe(
+    return this.http.post(`${this.apiUrl}/documentos/subir`, formData).pipe(
       catchError(this.handleError)
     );
   }
 
   // Métodos para revisión
   markAttending(id: string, revisor: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/documentos/atender`, { id, revisor }).pipe(
+    return this.http.post(`${this.apiUrl}/documentos/${id}/atendiendo`, { revisor }).pipe(
       catchError(this.handleError)
     );
   }
 
   reviewDocument(id: string, estado: string, revisor: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/documentos/revisar`, { id, estado, revisor }).pipe(
+    return this.http.post(`${this.apiUrl}/documentos/${id}/revisar`, { estado, revisor }).pipe(
       catchError(this.handleError)
     );
   }
 
   reviewDocumentWithReason(id: string, estado: string, revisor: string, motivo: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/documentos/revisar`, { id, estado, revisor, motivo }).pipe(
+    return this.http.post(`${this.apiUrl}/documentos/${id}/revisar`, { estado, revisor, motivo }).pipe(
       catchError(this.handleError)
     );
   }
 
   // Métodos para el pool - Ahora con persistencia en el backend
   getPoolStatus(): Observable<any> {
-    return this.http.get(`${this.apiUrl}/pool/estado`).pipe(
+    return this.http.get(`${this.apiUrl}/revision-pool/status`).pipe(
       catchError(this.handleError)
     );
   }
 
   abrirPool(revisor: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/pool/abrir`, { revisor }).pipe(
+    return this.http.post(`${this.apiUrl}/revision-pool/acquire`, { 
+      userId: `revisor_${Date.now()}`,
+      userName: revisor 
+    }).pipe(
       catchError(this.handleError)
     );
   }
 
   cerrarPool(revisor: string): Observable<any> {
-    return this.http.post(`${this.apiUrl}/pool/cerrar`, { revisor }).pipe(
+    return this.http.post(`${this.apiUrl}/revision-pool/release`, { 
+      userId: `revisor_${Date.now()}` 
+    }).pipe(
       catchError(this.handleError)
     );
   }

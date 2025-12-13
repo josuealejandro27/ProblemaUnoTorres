@@ -10,6 +10,10 @@ const controller = {};
 // Subir documento (SOLICITANTE)
 controller.subirDocumento = async (req, res) => {
   try {
+    console.log('📥 Subiendo documento...');
+    console.log('File:', req.file);
+    console.log('Body:', req.body);
+
     if (!req.file) {
       return res.status(400).json({ error: 'No se recibió ningún archivo PDF' });
     }
@@ -26,28 +30,49 @@ controller.subirDocumento = async (req, res) => {
       solicitanteEmail: email
     });
 
-    // Recargar el pool singleton con los nuevos datos
-    await poolSingleton.recargarDespuesDeSubida();
+    console.log('✅ Documento insertado con ID:', docId);
 
-    res.json({ 
+    // Recargar el pool singleton - CON VALIDACIÓN
+    try {
+      if (poolSingleton && typeof poolSingleton.recargarDespuesDeSubida === 'function') {
+        await poolSingleton.recargarDespuesDeSubida();
+        console.log('✅ Pool recargado');
+      } else {
+        console.warn('⚠️ poolSingleton.recargarDespuesDeSubida no existe');
+      }
+    } catch (poolError) {
+      console.error('⚠️ Error al recargar pool (no crítico):', poolError);
+      // No lanzamos error, el documento ya se guardó
+    }
+
+    res.status(201).json({ 
       id: docId, 
       message: 'Documento subido exitosamente',
-      nombreArchivo: req.file.originalname 
+      filename: req.file.originalname 
     });
+
   } catch (error) {
-    console.error('Error al subir documento:', error);
-    res.status(500).json({ error: 'Error al subir el documento' });
+    console.error('❌ Error al subir documento:', error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Error al subir el documento',
+      message: error.message 
+    });
   }
 };
 
 // Listar todos los documentos (REVISORES)
 controller.listarDocumentos = async (req, res) => {
   try {
-    // Obtener lista del Singleton (ya sincronizada automáticamente)
-    const lista = poolSingleton.obtenerLista();
+    let lista = [];
     
-    // Para debugging: mostrar información del pool
-    console.log('📋 Listando documentos desde pool:', poolSingleton.getInfo());
+    // Intentar obtener del singleton
+    if (poolSingleton && typeof poolSingleton.obtenerLista === 'function') {
+      lista = poolSingleton.obtenerLista();
+    } else {
+      // Fallback: consultar BD directamente
+      lista = await documentoModel.obtenerTodos();
+    }
     
     res.json(lista);
   } catch (error) {
@@ -56,7 +81,7 @@ controller.listarDocumentos = async (req, res) => {
   }
 };
 
-// Marcar documento como "EN_REVISION" (REVISOR toma el documento)
+// Marcar documento como "EN_REVISION"
 controller.marcarAtendiendo = async (req, res) => {
   try {
     const { id } = req.params;
@@ -66,8 +91,17 @@ controller.marcarAtendiendo = async (req, res) => {
       return res.status(400).json({ error: 'El nombre del revisor es obligatorio' });
     }
 
-    // Actualizar en el Singleton (que actualiza BD y cache)
-    await poolSingleton.marcarAtendiendo(id, revisor);
+    // Actualizar directamente en BD usando el modelo
+    await documentoModel.marcarAtendiendo(id, revisor);
+
+    // Actualizar singleton si existe
+    if (poolSingleton && typeof poolSingleton.marcarAtendiendo === 'function') {
+      try {
+        await poolSingleton.marcarAtendiendo(id, revisor);
+      } catch (poolError) {
+        console.warn('⚠️ Error al actualizar pool:', poolError);
+      }
+    }
 
     res.json({ 
       message: `Documento tomado por ${revisor}`,
@@ -80,7 +114,7 @@ controller.marcarAtendiendo = async (req, res) => {
   }
 };
 
-// Revisar documento: ACEPTADO o RECHAZADO (REVISOR finaliza revisión)
+// Revisar documento: ACEPTADO o RECHAZADO
 controller.revisarDocumento = async (req, res) => {
   try {
     const { id } = req.params;
@@ -94,13 +128,21 @@ controller.revisarDocumento = async (req, res) => {
       return res.status(400).json({ error: 'Estado debe ser "Aceptado" o "Rechazado"' });
     }
 
-    // Validar motivo si es rechazo
     if (estado === 'Rechazado' && !motivo) {
       return res.status(400).json({ error: 'El motivo del rechazo es obligatorio' });
     }
 
-    // Actualizar en el Singleton (que actualiza BD y cache)
-    await poolSingleton.revisarDocumento(id, estado, revisor);
+    // Actualizar directamente en BD usando el modelo
+    await documentoModel.actualizarEstadoYAtendido(id, estado, revisor);
+
+    // Actualizar singleton si existe
+    if (poolSingleton && typeof poolSingleton.revisarDocumento === 'function') {
+      try {
+        await poolSingleton.revisarDocumento(id, estado, revisor);
+      } catch (poolError) {
+        console.warn('⚠️ Error al actualizar pool:', poolError);
+      }
+    }
 
     // Obtener datos del documento para enviar correo
     const documento = await documentoModel.obtenerPorId(id);
@@ -130,7 +172,7 @@ controller.revisarDocumento = async (req, res) => {
         html += `
             <p style="margin-top: 20px;"><em>Revisado por: ${revisor}</em></p>
             <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-            <p style="font-size: 12px; color: #7f8c8d;">Este es un mensaje automático del Sistema de Revisión de Documentos.</p>
+            <p style="font-size: 12px; color: #7f8c8d;">Sistema de Revisión de Documentos.</p>
           </div>
         `;
         
@@ -156,35 +198,17 @@ controller.revisarDocumento = async (req, res) => {
 controller.descargarDocumento = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // Obtener documento de la base de datos
     const documento = await documentoModel.obtenerPorId(id);
     
     if (!documento) {
       return res.status(404).json({ error: 'Documento no encontrado' });
     }
 
-    const rutaArchivo = documento.rutaArchivo;
-    const nombreArchivo = documento.nombreArchivo || 'documento.pdf';
-    
-    if (!rutaArchivo) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
+    if (!fs.existsSync(documento.rutaArchivo)) {
+      return res.status(404).json({ error: 'El archivo físico no existe' });
     }
 
-    // Verificar si el archivo existe
-    if (!fs.existsSync(rutaArchivo)) {
-      return res.status(404).json({ error: 'El archivo físico no existe en el servidor' });
-    }
-
-    // Enviar el archivo
-    res.download(rutaArchivo, nombreArchivo, (err) => {
-      if (err) {
-        console.error('Error al enviar archivo:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Error al descargar el archivo' });
-        }
-      }
-    });
+    res.download(documento.rutaArchivo, documento.nombreArchivo);
   } catch (error) {
     console.error('Error al descargar documento:', error);
     res.status(500).json({ error: 'Error al descargar el documento' });
@@ -195,42 +219,31 @@ controller.descargarDocumento = async (req, res) => {
 controller.verDocumento = async (req, res) => {
   try {
     const { id } = req.params;
-    
     const documento = await documentoModel.obtenerPorId(id);
     
-    if (!documento) {
+    if (!documento || !fs.existsSync(documento.rutaArchivo)) {
       return res.status(404).json({ error: 'Documento no encontrado' });
     }
 
-    const rutaArchivo = documento.rutaArchivo;
-    
-    if (!rutaArchivo) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
-    }
-
-    if (!fs.existsSync(rutaArchivo)) {
-      return res.status(404).json({ error: 'El archivo físico no existe' });
-    }
-
-    // Enviar como PDF para visualización en el navegador
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${documento.nombreArchivo}"`);
     
-    const fileStream = fs.createReadStream(rutaArchivo);
-    fileStream.pipe(res);
+    fs.createReadStream(documento.rutaArchivo).pipe(res);
   } catch (error) {
     console.error('Error al visualizar documento:', error);
     res.status(500).json({ error: 'Error al visualizar el documento' });
   }
 };
 
-// Estado del pool (opcional)
+// Estado del pool
 controller.estadoPool = async (req, res) => {
   try {
-    const info = poolSingleton.getInfo ? poolSingleton.getInfo() : { message: "Pool no tiene método getInfo" };
+    const info = poolSingleton.getInfo ? poolSingleton.getInfo() : {};
+    const lista = poolSingleton.obtenerLista ? poolSingleton.obtenerLista() : await documentoModel.obtenerTodos();
+    
     res.json({
       ...info,
-      documentos: poolSingleton.obtenerLista ? poolSingleton.obtenerLista() : []
+      documentos: lista
     });
   } catch (error) {
     console.error('Error al obtener estado del pool:', error);
